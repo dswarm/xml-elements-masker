@@ -52,7 +52,7 @@ xem is a Scala program wrapped in a shell script. It takes the source files dire
     val d = new File(dir)
 
     if (!d.exists || !d.isDirectory)
-      List[String]()
+      List[(String, String)]()
 
     d.listFiles.filter(_.isFile).toList.map(file => (file.getName, file.getAbsolutePath))
   }
