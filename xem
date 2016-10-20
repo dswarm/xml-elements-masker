@@ -143,6 +143,8 @@ xem is a Scala program wrapped in a shell script. It takes the source files dire
       writeResultToFile(outFilePathString, enhancedXML)
     }
 
+    println("process '" + sourceFiles.length + "' source files")
+
     sourceFiles.foreach(sourceFile => processSourceFile(sourceFile, recordTag, maskElements))
   }
 
@@ -168,11 +170,13 @@ xem is a Scala program wrapped in a shell script. It takes the source files dire
       sys.exit(1)
     }
 
-    val sourceFiles = getListOfFiles(sourceFilesDirectoryOption.get)
+    val sourceFilesDirectory= sourceFilesDirectoryOption.get
+    val sourceFiles = getListOfFiles(sourceFilesDirectory)
     val recordTag = recordTagOption.get
     val maskElements = getMaskElements(maskElementsStringOption.get)
     val targetFilesDirectory = targetFilesDirectoryOption.orElse(sourceFilesDirectoryOption).get
 
+    println("source files directory = '" + sourceFilesDirectory + "'")
     println("record tag = '" + recordTag + "'")
     println("mask elements = '" + maskElements.mkString(", ") + "'")
     println("target files directory = '" + targetFilesDirectory + "'")
