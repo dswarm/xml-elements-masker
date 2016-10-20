@@ -25,8 +25,6 @@ xem is a Scala program wrapped in a shell script. It takes the source files dire
 
   private def nextOption(map: OptionMap, list: List[String]): OptionMap = {
 
-    def isSwitch(s: String) = s(0) == '-'
-
     list match {
       case Nil => map
       case "--source-files-directory" :: value :: tail =>
@@ -40,10 +38,9 @@ xem is a Scala program wrapped in a shell script. It takes the source files dire
       case "--help" :: tail =>
         println(usage)
         sys.exit(1)
-      case option :: tail => {
+      case option :: tail =>
         println("Unknown option " + option)
         map
-      }
     }
   }
 
@@ -59,6 +56,14 @@ xem is a Scala program wrapped in a shell script. It takes the source files dire
 
   private def getMaskElements(maskElementsString: String): List[String] = maskElementsString.split(",").toList
 
+  private def printStartingTag(nodeLabel: String): String = "<" + nodeLabel + ">"
+
+  private def printClosingTag(nodeLabel: String): String = "</" + nodeLabel + ">"
+
+  private def printClosingTag(node: Node): String = printClosingTag(node.label)
+
+
+
   private def maskElementsInRecord(publisher: Node, maskElements: List[String]): String = {
 
     def printStartingTag(element: Node, closingTag: String): String = {
@@ -72,8 +77,6 @@ xem is a Scala program wrapped in a shell script. It takes the source files dire
     }
 
     def getInnerContent(e: Elem, startingTag: String, closingTag: String): String = e.mkString.replaceFirst(startingTag, "").split(closingTag).toList.head
-
-    def printClosingTag(node: Node): String = "</" + node.label + ">"
 
     def maskElementsInNodes(node: Node): String = {
 
@@ -114,7 +117,7 @@ xem is a Scala program wrapped in a shell script. It takes the source files dire
 
       val pw = new PrintWriter(new File(fileName), StandardCharsets.UTF_8.toString)
       pw.write(content)
-      pw.close
+      pw.close()
     }
 
     def processSourceFile(sourceFile: (String, String), recordTag: String, maskElements: List[String]) = {
@@ -125,14 +128,21 @@ xem is a Scala program wrapped in a shell script. It takes the source files dire
 
       println(publishers.length + " '" + recordTag + "' records in file '" + sourceFile._2 + "'")
 
+      val recordsTag = recordTag + "s"
+
+      sb.append(printStartingTag(recordsTag))
+
       publishers.foreach(publisher => sb.append(maskElementsInRecord(publisher, maskElements)))
+
+      sb.append(printClosingTag(recordsTag))
 
       val outputFilePath = Paths.get(targetFilesDirectory, "enhanced_" + sourceFile._1)
       val outFilePathString = outputFilePath.toString
+      val enhancedXML = sb.toString
 
       println("wrote enhanced version of '" + sourceFile._2 + "' in '" + outFilePathString + "'")
 
-      writeResultToFile(outFilePathString, sb.toString)
+      writeResultToFile(outFilePathString, enhancedXML)
     }
 
     sourceFiles.foreach(sourceFile => processSourceFile(sourceFile, recordTag, maskElements))
