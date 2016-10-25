@@ -1,0 +1,188 @@
+#!/bin/sh
+exec scala -J-Xmx2g -savecompiled "$0" "$@"
+!#
+import java.io.{File, PrintWriter}
+import java.nio.charset.StandardCharsets
+import java.nio.file.Paths
+
+import scala.xml.{Elem, Node, XML}
+
+object XmlElementsMasker {
+
+  val usage =
+    """xem - d:swarm XML elements masker
+
+xem is a Scala program wrapped in a shell script. It takes the source files directory, the record tag, the mask elements and the target directory as input and masks the sub trees of the wanted XML elements in CDATA tags.
+
+    Usage: xem
+        --source-files-directory [ABSOLUTE PATH TO SOURCE FILES DIRECTORY]
+        --record-tag [XML RECORD TAG]
+        --mask-elements [a comma-separated list of XML element tags, whose content and sub elements should be masked with CDATA]
+        --target-files-directory [ABSOLUTE PATH TO TARGET FILES DIRECTORY]
+    """
+
+  type OptionMap = Map[Symbol, String]
+
+  private def nextOption(map: OptionMap, list: List[String]): OptionMap = {
+
+    list match {
+      case Nil => map
+      case "--source-files-directory" :: value :: tail =>
+        nextOption(map ++ Map('sourcefilesdirectory -> value.toString), tail)
+      case "--record-tag" :: value :: tail =>
+        nextOption(map ++ Map('recordtag -> value.toString), tail)
+      case "--mask-elements" :: value :: tail =>
+        nextOption(map ++ Map('maskelements -> value.toString), tail)
+      case "--target-files-directory" :: value :: tail =>
+        nextOption(map ++ Map('targetfilesdirectory -> value.toString), tail)
+      case "--help" :: tail =>
+        println(usage)
+        sys.exit(1)
+      case option :: tail =>
+        println("Unknown option " + option)
+        map
+    }
+  }
+
+  private def getListOfFiles(dir: String): List[(String, String)] = {
+
+    val d = new File(dir)
+
+    if (!d.exists || !d.isDirectory)
+      List[(String, String)]()
+
+    d.listFiles.filter(_.isFile).toList.map(file => (file.getName, file.getAbsolutePath))
+  }
+
+  private def getMaskElements(maskElementsString: String): List[String] = maskElementsString.split(",").toList
+
+  private def printStartingTag(nodeLabel: String): String = "<" + nodeLabel + ">"
+
+  private def printClosingTag(nodeLabel: String): String = "</" + nodeLabel + ">"
+
+  private def printClosingTag(node: Node): String = printClosingTag(node.label)
+
+  private def maskElementsInRecord(publisher: Node, maskElements: List[String]): String = {
+
+    def printStartingTag(element: Node, closingTag: String): String = {
+
+      val nodeAsString = element.mkString
+
+      if (!nodeAsString.endsWith(closingTag))
+        nodeAsString
+      else
+        nodeAsString.substring(0, nodeAsString.indexOf(">") + 1)
+    }
+
+    def getInnerContent(e: Elem, startingTag: String, closingTag: String): String = e.mkString.replaceFirst(startingTag, "").split(closingTag).toList.head
+
+    def maskElementsInNodes(node: Node): String = {
+
+      val sb = new StringBuilder
+      val closingTag = printClosingTag(node)
+      val startingTag = printStartingTag(node, closingTag)
+      val noClosingTag = startingTag.endsWith("/>")
+
+      sb.append(startingTag)
+
+      node.child.foreach {
+        case e: Elem if maskElements.contains(e.label) =>
+          val closingTag = printClosingTag(e)
+          val startingTag = printStartingTag(e, closingTag)
+          val innerContent = getInnerContent(e, startingTag, closingTag)
+
+          sb.append(startingTag)
+            .append("<![CDATA[")
+            .append(innerContent)
+            .append("]]>")
+            .append(closingTag)
+        case e: Elem => sb.append(maskElementsInNodes(e))
+        case b => sb.append(b.mkString)
+      }
+
+      if (!noClosingTag)
+        sb.append(closingTag)
+
+      sb.toString
+    }
+
+    maskElementsInNodes(publisher)
+  }
+
+  private def processSourceFiles(sourceFiles: List[(String, String)], recordTag: String, maskElements: List[String], targetFilesDirectory: String) = {
+
+    def writeResultToFile(fileName: String, content: String) = {
+
+      val pw = new PrintWriter(new File(fileName), StandardCharsets.UTF_8.toString)
+      pw.write(content)
+      pw.close()
+    }
+
+    def processSourceFile(sourceFile: (String, String), recordTag: String, maskElements: List[String]) = {
+
+      val sb = new StringBuilder
+      val sourceXML = XML.loadFile(sourceFile._2)
+      val publishers = sourceXML \ recordTag
+
+      println(publishers.length + " '" + recordTag + "' records in file '" + sourceFile._2 + "'")
+
+      val recordsTag = recordTag + "s"
+
+      sb.append(printStartingTag(recordsTag))
+
+      publishers.foreach(publisher => sb.append(maskElementsInRecord(publisher, maskElements)))
+
+      sb.append(printClosingTag(recordsTag))
+
+      val outputFilePath = Paths.get(targetFilesDirectory, "enhanced_" + sourceFile._1)
+      val outFilePathString = outputFilePath.toString
+      val enhancedXML = sb.toString
+
+      println("wrote enhanced version of '" + sourceFile._2 + "' in '" + outFilePathString + "'")
+
+      writeResultToFile(outFilePathString, enhancedXML)
+    }
+
+    println("process '" + sourceFiles.length + "' source files")
+
+    sourceFiles.foreach(sourceFile => processSourceFile(sourceFile, recordTag, maskElements))
+  }
+
+  def main(args: Array[String]) {
+
+    if (args.length == 0) {
+      println(usage)
+      sys.exit(1)
+    }
+
+    val arglist = args.toList
+
+    val options = nextOption(Map(), arglist)
+
+    val sourceFilesDirectoryOption = options.get('sourcefilesdirectory)
+    val recordTagOption = options.get('recordtag)
+    val maskElementsStringOption = options.get('maskelements)
+    val targetFilesDirectoryOption = options.get('targetfilesdirectory)
+
+    if (sourceFilesDirectoryOption.isEmpty || recordTagOption.isEmpty || maskElementsStringOption.isEmpty) {
+      println("Please define each parameter")
+      println(usage)
+      sys.exit(1)
+    }
+
+    val sourceFilesDirectory= sourceFilesDirectoryOption.get
+    val sourceFiles = getListOfFiles(sourceFilesDirectory)
+    val recordTag = recordTagOption.get
+    val maskElements = getMaskElements(maskElementsStringOption.get)
+    val targetFilesDirectory = targetFilesDirectoryOption.orElse(sourceFilesDirectoryOption).get
+
+    println("source files directory = '" + sourceFilesDirectory + "'")
+    println("record tag = '" + recordTag + "'")
+    println("mask elements = '" + maskElements.mkString(", ") + "'")
+    println("target files directory = '" + targetFilesDirectory + "'")
+
+    processSourceFiles(sourceFiles, recordTag, maskElements, targetFilesDirectory)
+  }
+}
+
+XmlElementsMasker.main(args)
