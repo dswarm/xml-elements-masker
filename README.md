@@ -6,9 +6,11 @@ xem is a Scala program wrapped in a shell script. It takes the source files dire
 
 ```
 xem
-        --source-files-directory [ABSOLUTE PATH TO SOURCE FILES DIRECTORY]
-        --record-tag [XML RECORD TAG]
-        --mask-elements [a comma-separated list of XML element tags, whose content and sub elements should be masked with CDATA]
-        --target-files-directory [ABSOLUTE PATH TO TARGET FILES DIRECTORY]
+        --source-files-directory    [ABSOLUTE PATH TO SOURCE FILES DIRECTORY]
+        --record-tag                [XML RECORD TAG]
+        --mask-elements             [a comma-separated list of XML element tags, whose content and sub elements should be masked with CDATA]
+        --target-files-directory    [ABSOLUTE PATH TO TARGET FILES DIRECTORY]
+        --content-only              utilise only the content of the sub elements (i.e. without further XML elements tags inside)
+        --help                      print this help
 ```
 

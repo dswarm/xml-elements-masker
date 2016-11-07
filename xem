@@ -15,10 +15,12 @@ object XmlElementsMasker {
 xem is a Scala program wrapped in a shell script. It takes the source files directory, the record tag, the mask elements and the target directory as input and masks the sub trees of the wanted XML elements in CDATA tags.
 
     Usage: xem
-        --source-files-directory [ABSOLUTE PATH TO SOURCE FILES DIRECTORY]
-        --record-tag [XML RECORD TAG]
-        --mask-elements [a comma-separated list of XML element tags, whose content and sub elements should be masked with CDATA]
-        --target-files-directory [ABSOLUTE PATH TO TARGET FILES DIRECTORY]
+        --source-files-directory    [ABSOLUTE PATH TO SOURCE FILES DIRECTORY]
+        --record-tag                [XML RECORD TAG]
+        --mask-elements             [a comma-separated list of XML element tags, whose content and sub elements should be masked with CDATA]
+        --target-files-directory    [ABSOLUTE PATH TO TARGET FILES DIRECTORY]
+        --content-only              utilise only the content of the sub elements (i.e. without further XML elements tags inside)
+        --help                      print this help
     """
 
   type OptionMap = Map[Symbol, String]
@@ -35,6 +37,8 @@ xem is a Scala program wrapped in a shell script. It takes the source files dire
         nextOption(map ++ Map('maskelements -> value.toString), tail)
       case "--target-files-directory" :: value :: tail =>
         nextOption(map ++ Map('targetfilesdirectory -> value.toString), tail)
+      case "--content-only" :: tail =>
+        nextOption(map ++ Map('contentonly -> "true"), tail)
       case "--help" :: tail =>
         println(usage)
         sys.exit(1)
@@ -62,19 +66,30 @@ xem is a Scala program wrapped in a shell script. It takes the source files dire
 
   private def printClosingTag(node: Node): String = printClosingTag(node.label)
 
-  private def maskElementsInRecord(publisher: Node, maskElements: List[String]): String = {
+  private def maskElementsInRecord(publisher: Node, maskElements: List[String], contentOnly: Boolean): String = {
 
     def printStartingTag(element: Node, closingTag: String): String = {
 
       val nodeAsString = element.mkString
 
-      if (!nodeAsString.endsWith(closingTag))
+      if (!nodeAsString.endsWith(closingTag)) {
         nodeAsString
-      else
+      }
+      else {
         nodeAsString.substring(0, nodeAsString.indexOf(">") + 1)
+      }
     }
 
-    def getInnerContent(e: Elem, startingTag: String, closingTag: String): String = e.mkString.replaceFirst(startingTag, "").split(closingTag).toList.head
+    def getInnerContent(e: Elem, startingTag: String, closingTag: String, contentOnly: Boolean): String = {
+
+      if (contentOnly) {
+
+        e.text
+      } else {
+
+        e.mkString.replaceFirst(startingTag, "").split(closingTag).toList.head
+      }
+    }
 
     def maskElementsInNodes(node: Node): String = {
 
@@ -89,7 +104,7 @@ xem is a Scala program wrapped in a shell script. It takes the source files dire
         case e: Elem if maskElements.contains(e.label) =>
           val closingTag = printClosingTag(e)
           val startingTag = printStartingTag(e, closingTag)
-          val innerContent = getInnerContent(e, startingTag, closingTag)
+          val innerContent = getInnerContent(e, startingTag, closingTag, contentOnly)
 
           sb.append(startingTag)
             .append("<![CDATA[")
@@ -109,7 +124,7 @@ xem is a Scala program wrapped in a shell script. It takes the source files dire
     maskElementsInNodes(publisher)
   }
 
-  private def processSourceFiles(sourceFiles: List[(String, String)], recordTag: String, maskElements: List[String], targetFilesDirectory: String) = {
+  private def processSourceFiles(sourceFiles: List[(String, String)], recordTag: String, maskElements: List[String], contentOnly: Boolean, targetFilesDirectory: String) = {
 
     def writeResultToFile(fileName: String, content: String) = {
 
@@ -118,19 +133,18 @@ xem is a Scala program wrapped in a shell script. It takes the source files dire
       pw.close()
     }
 
-    def processSourceFile(sourceFile: (String, String), recordTag: String, maskElements: List[String]) = {
+    def processSourceFile(sourceFile: (String, String), maskElements: List[String]) = {
 
       val sb = new StringBuilder
       val sourceXML = XML.loadFile(sourceFile._2)
       val publishers = sourceXML \ recordTag
-
       println(publishers.length + " '" + recordTag + "' records in file '" + sourceFile._2 + "'")
 
       val recordsTag = recordTag + "s"
 
       sb.append(printStartingTag(recordsTag))
 
-      publishers.foreach(publisher => sb.append(maskElementsInRecord(publisher, maskElements)))
+      publishers.foreach(publisher => sb.append(maskElementsInRecord(publisher, maskElements, contentOnly)).append("\n"))
 
       sb.append(printClosingTag(recordsTag))
 
@@ -145,7 +159,7 @@ xem is a Scala program wrapped in a shell script. It takes the source files dire
 
     println("process '" + sourceFiles.length + "' source files")
 
-    sourceFiles.foreach(sourceFile => processSourceFile(sourceFile, recordTag, maskElements))
+    sourceFiles.foreach(sourceFile => processSourceFile(sourceFile, maskElements))
   }
 
   def main(args: Array[String]) {
@@ -163,25 +177,27 @@ xem is a Scala program wrapped in a shell script. It takes the source files dire
     val recordTagOption = options.get('recordtag)
     val maskElementsStringOption = options.get('maskelements)
     val targetFilesDirectoryOption = options.get('targetfilesdirectory)
+    val contentOnlyOption = options.get('contentonly)
 
     if (sourceFilesDirectoryOption.isEmpty || recordTagOption.isEmpty || maskElementsStringOption.isEmpty) {
-      println("Please define each parameter")
+      println("Please define --source-files-directory, --record-tag and --mask-elements at least parameter")
       println(usage)
       sys.exit(1)
     }
 
-    val sourceFilesDirectory= sourceFilesDirectoryOption.get
+    val sourceFilesDirectory = sourceFilesDirectoryOption.get
     val sourceFiles = getListOfFiles(sourceFilesDirectory)
     val recordTag = recordTagOption.get
     val maskElements = getMaskElements(maskElementsStringOption.get)
     val targetFilesDirectory = targetFilesDirectoryOption.orElse(sourceFilesDirectoryOption).get
+    val contentOnly = contentOnlyOption.orElse(Option("false")).get.toBoolean
 
     println("source files directory = '" + sourceFilesDirectory + "'")
     println("record tag = '" + recordTag + "'")
     println("mask elements = '" + maskElements.mkString(", ") + "'")
     println("target files directory = '" + targetFilesDirectory + "'")
 
-    processSourceFiles(sourceFiles, recordTag, maskElements, targetFilesDirectory)
+    processSourceFiles(sourceFiles, recordTag, maskElements, contentOnly, targetFilesDirectory)
   }
 }
 
