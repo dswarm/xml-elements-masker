@@ -11,6 +11,6 @@ xem
         --mask-elements             [a comma-separated list of XML element tags, whose content and sub elements should be masked with CDATA]
         --target-files-directory    [ABSOLUTE PATH TO TARGET FILES DIRECTORY]
         --content-only              utilise only the content of the sub elements (i.e. without further XML elements tags inside)
-        --help                       print this help
+        --help                      print this help
 ```
 
