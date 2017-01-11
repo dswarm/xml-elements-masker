@@ -20,6 +20,7 @@ xem is a Scala program wrapped in a shell script. It takes the source files dire
         --mask-elements             [a comma-separated list of XML element tags, whose content and sub elements should be masked with CDATA]
         --target-files-directory    [ABSOLUTE PATH TO TARGET FILES DIRECTORY]
         --content-only              utilise only the content of the sub elements (i.e. without further XML elements tags inside)
+        --exclude-empty-elements    exclude empty XML element tags, which should be masked with CDATA
         --help                      print this help
     """
 
@@ -39,6 +40,8 @@ xem is a Scala program wrapped in a shell script. It takes the source files dire
         nextOption(map ++ Map('targetfilesdirectory -> value.toString), tail)
       case "--content-only" :: tail =>
         nextOption(map ++ Map('contentonly -> "true"), tail)
+       case "--exclude-empty-elements" :: tail =>
+        nextOption(map ++ Map('excludeemptyelements -> "true"), tail)
       case "--help" :: tail =>
         println(usage)
         sys.exit(1)
@@ -66,7 +69,7 @@ xem is a Scala program wrapped in a shell script. It takes the source files dire
 
   private def printClosingTag(node: Node): String = printClosingTag(node.label)
 
-  private def maskElementsInRecord(publisher: Node, maskElements: List[String], contentOnly: Boolean): String = {
+  private def maskElementsInRecord(publisher: Node, maskElements: List[String], contentOnly: Boolean, excludeEmptyElements: Boolean): String = {
 
     def printStartingTag(element: Node, closingTag: String): String = {
 
@@ -100,23 +103,29 @@ xem is a Scala program wrapped in a shell script. It takes the source files dire
 
       sb.append(startingTag)
 
-      node.child.foreach {
-        case e: Elem if maskElements.contains(e.label) =>
-          val closingTag = printClosingTag(e)
-          val startingTag = printStartingTag(e, closingTag)
-          val innerContent = getInnerContent(e, startingTag, closingTag, contentOnly)
+      if (!noClosingTag) {
+        node.child.foreach {
+          case e: Elem if maskElements.contains(e.label) =>
+            val closingTag = printClosingTag(e)
+            val startingTag = printStartingTag(e, closingTag)
+            val noClosingTag = startingTag.endsWith("/>")
+            val innerContent = getInnerContent(e, startingTag, closingTag, contentOnly)
 
-          sb.append(startingTag)
-            .append("<![CDATA[")
-            .append(innerContent)
-            .append("]]>")
-            .append(closingTag)
-        case e: Elem => sb.append(maskElementsInNodes(e))
-        case b => sb.append(b.mkString)
-      }
-
-      if (!noClosingTag)
+            if (!noClosingTag) {
+              sb.append(startingTag)
+                .append("<![CDATA[")
+                .append(innerContent)
+                .append("]]>")
+                .append(closingTag)
+            } else if (!excludeEmptyElements) {
+              sb.append(startingTag)
+            }
+          case e: Elem => sb.append(maskElementsInNodes(e))
+          case b => sb.append(b.mkString)
+        }
+        
         sb.append(closingTag)
+      }
 
       sb.toString
     }
@@ -124,7 +133,7 @@ xem is a Scala program wrapped in a shell script. It takes the source files dire
     maskElementsInNodes(publisher)
   }
 
-  private def processSourceFiles(sourceFiles: List[(String, String)], recordTag: String, maskElements: List[String], contentOnly: Boolean, targetFilesDirectory: String) = {
+  private def processSourceFiles(sourceFiles: List[(String, String)], recordTag: String, maskElements: List[String], contentOnly: Boolean, excludeEmptyElements: Boolean, targetFilesDirectory: String) = {
 
     def writeResultToFile(fileName: String, content: String) = {
 
@@ -144,7 +153,7 @@ xem is a Scala program wrapped in a shell script. It takes the source files dire
 
       sb.append(printStartingTag(recordsTag))
 
-      publishers.foreach(publisher => sb.append(maskElementsInRecord(publisher, maskElements, contentOnly)).append("\n"))
+      publishers.foreach(publisher => sb.append(maskElementsInRecord(publisher, maskElements, contentOnly, excludeEmptyElements)).append("\n"))
 
       sb.append(printClosingTag(recordsTag))
 
@@ -178,6 +187,7 @@ xem is a Scala program wrapped in a shell script. It takes the source files dire
     val maskElementsStringOption = options.get('maskelements)
     val targetFilesDirectoryOption = options.get('targetfilesdirectory)
     val contentOnlyOption = options.get('contentonly)
+    val excludeEmptyElementsOption = options.get('excludeemptyelements)
 
     if (sourceFilesDirectoryOption.isEmpty || recordTagOption.isEmpty || maskElementsStringOption.isEmpty) {
       println("Please define --source-files-directory, --record-tag and --mask-elements at least parameter")
@@ -191,13 +201,14 @@ xem is a Scala program wrapped in a shell script. It takes the source files dire
     val maskElements = getMaskElements(maskElementsStringOption.get)
     val targetFilesDirectory = targetFilesDirectoryOption.orElse(sourceFilesDirectoryOption).get
     val contentOnly = contentOnlyOption.orElse(Option("false")).get.toBoolean
+    val excludeEmptyElements = excludeEmptyElementsOption.orElse(Option("false")).get.toBoolean
 
     println("source files directory = '" + sourceFilesDirectory + "'")
     println("record tag = '" + recordTag + "'")
     println("mask elements = '" + maskElements.mkString(", ") + "'")
     println("target files directory = '" + targetFilesDirectory + "'")
 
-    processSourceFiles(sourceFiles, recordTag, maskElements, contentOnly, targetFilesDirectory)
+    processSourceFiles(sourceFiles, recordTag, maskElements, contentOnly, excludeEmptyElements, targetFilesDirectory)
   }
 }
 
