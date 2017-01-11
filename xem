@@ -103,23 +103,29 @@ xem is a Scala program wrapped in a shell script. It takes the source files dire
 
       sb.append(startingTag)
 
-      node.child.foreach {
-        case e: Elem if maskElements.contains(e.label) =>
-          val closingTag = printClosingTag(e)
-          val startingTag = printStartingTag(e, closingTag)
-          val innerContent = getInnerContent(e, startingTag, closingTag, contentOnly)
+      if (!noClosingTag) {
+        node.child.foreach {
+          case e: Elem if maskElements.contains(e.label) =>
+            val closingTag = printClosingTag(e)
+            val startingTag = printStartingTag(e, closingTag)
+            val noClosingTag = startingTag.endsWith("/>")
+            val innerContent = getInnerContent(e, startingTag, closingTag, contentOnly)
 
-          sb.append(startingTag)
-            .append("<![CDATA[")
-            .append(innerContent)
-            .append("]]>")
-            .append(closingTag)
-        case e: Elem => sb.append(maskElementsInNodes(e))
-        case b => sb.append(b.mkString)
-      }
-
-      if (!noClosingTag)
+            if (!noClosingTag) {
+              sb.append(startingTag)
+                .append("<![CDATA[")
+                .append(innerContent)
+                .append("]]>")
+                .append(closingTag)
+            } else if (!excludeEmptyElements) {
+              sb.append(startingTag)
+            }
+          case e: Elem => sb.append(maskElementsInNodes(e))
+          case b => sb.append(b.mkString)
+        }
+        
         sb.append(closingTag)
+      }
 
       sb.toString
     }
